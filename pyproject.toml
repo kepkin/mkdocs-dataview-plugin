@@ -13,9 +13,20 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 
+dependencies = [
+  "dictquery == 0.5.0",
+  "python-frontmatter == 1.1.0",
+  "mkdocs == 1.5.3",
+]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project.entry-points."mkdocs.plugins"]
 dataview = "mkdocs_dataview.plugin:DataViewPlugin"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
