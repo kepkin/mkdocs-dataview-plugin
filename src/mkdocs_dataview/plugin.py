@@ -11,14 +11,17 @@ import frontmatter
 
 from jinja2.sandbox import SandboxedEnvironment
 from mkdocs.config import base
-from mkdocs.plugins import BasePlugin, get_plugin_logger
+from mkdocs.config.defaults import MkDocsConfig
+from mkdocs.plugins import BasePlugin
 from mkdocs.structure.files import Files, File
 from mkdocs.structure.pages import Page
 
 from . import utils
 
+
 class DataViewPluginConfig(base.Config):
     """Config file for the mkdocs plugin."""
+
 
 class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
     """Data View plugin main class."""
@@ -26,7 +29,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
         self.sources = {}
         self.tags = defaultdict(list)
 
-    def on_files(self, files: Files, config, **kwargs):
+    def on_files(self, files: Files, *, config: MkDocsConfig) -> Files | None:
         genderated_files_list = []
         for f in files:
             path_without_extension, extension = os.path.splitext(f.src_uri)
@@ -53,7 +56,9 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
 
         return files
 
-    def on_page_markdown(self, markdown, page: Page, config, **kwargs):
+    def on_page_markdown(
+        self, markdown: str, *, page: Page, config: MkDocsConfig, files: Files
+    ) -> str:
         """
         Find all dataview fences and replace them with the rendered markdown table
         """
@@ -65,7 +70,6 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
         result = output.getvalue()
         output.close()
         return result
-
 
     def load_file(self, path: str):
         """
@@ -80,7 +84,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
             return
 
         if obj.metadata.get('file') is not None:
-            raise Exception("unexpected `file` parameter in frontmatter ", path)
+            raise Exception("unexpected `file` parameter in frontmatter ", path) # pylint: disable=broad-exception-raised
 
         obj.metadata['file'] = {
             'path': target_url,
@@ -93,6 +97,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
                 self.tags[tag].append(obj.metadata)
 
     def collect_data(self, root_path: str):
+        """searches for all .md, .mdtmpl files (used in cli mode)"""
         for file_path in utils.enumerate_files_by_ext(root_path, ['.md', '.mdtmpl']):
             target_url = file_path
             path_without_extension, extension = os.path.splitext(file_path)
@@ -100,51 +105,52 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
                 target_url = path_without_extension + '.md'
             self._on_file(file_path, target_url)
 
-
     def render_str(self, line_stream, out, metadata, path):
+        """renders from line_stream to out"""
         frontmatter_expecting = True
 
         in_data_view = False
         query = ""
-        for l in line_stream:
+        for line in line_stream:
             if frontmatter_expecting:
                 frontmatter_expecting = False
-                if l.strip() == "---":
-                    out.write(l)
+                if line.strip() == "---":
+                    out.write(line)
                     out.write("generated_ignore: true\n")
                     continue
 
-
             if not in_data_view:
-                if l == "```dataview\n":
+                if line == "```dataview\n":
                     in_data_view = True
                     continue
 
-                out.write(l)
+                out.write(line)
 
             else:
-                if l == "```\n":
+                if line == "```\n":
                     self.render_query(query, metadata, out, path)
                     in_data_view = False
                     query = ""
                     continue
 
-                query += l
+                query += line
 
     def render_file(self, path, out):
+        """renders file"""
         obj = self.load_file(path)
         self.render_str(io.StringIO(obj.content), out, obj.metadata, path)
 
     def render_all_templates(self, path: str):
+        """renders all files in cli mode"""
         for full_path_file in utils.enumerate_files_by_ext(path, ['.mdtmpl']):
             new_file_path, _ = os.path.splitext(full_path_file)
             new_file_path += ".md"
 
-            with open(new_file_path, 'w') as file_out:
+            with open(new_file_path, 'w', encoding="utf-8-sig") as file_out:
                 self.render_file(full_path_file, file_out)
 
-
     def render_query(self, query, metadata, out, out_path=''):
+        """replaces context variable in where clause and then renders markdown table"""
         select_list_str, where_query = query.split("WHERE",2)
         select_list = [i.strip() for i in select_list_str.split(',')]
 
@@ -152,9 +158,10 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
         return self.render_table(select_list, rendered_where_query, out, out_path)
 
     def split_token(self, where_query):
+        """generator for where clause tokens"""
         token = ""
         for i in where_query:
-            if i in [',' '(', ')', '+', '-', '*', '/', '[', ']']:
+            if i in [',', '(', ')', '+', '-', '*', '/', '[', ']']:
                 if token:
                     yield token
                     token = ""
@@ -174,6 +181,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
             yield token
 
     def render_where_clause(self, where_query, metadata):
+        """replaces context variable in where clause"""
         result = []
 
         for t in self.split_token(where_query):
@@ -185,14 +193,10 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
         return ' '.join(result)
 
     def render_table(self, select_list, where_query, out, out_path):
+        """renders markdown table"""
         env = SandboxedEnvironment()
 
-        out.write("|")
-        out.write("|".join(select_list))
-        out.write("|\n")
-        out.write("|")
-        out.write("--|"*len(select_list))
-        out.write("\n")
+        render_table_header(select_list, out)
 
         tpl = "|"
         for v in select_list:
@@ -202,12 +206,21 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
                 tpl += f" {{{{ el['{v}'] }}}} |"
 
         for _, v in self.sources.items():
-            v['file']['link'] = f"[{v.get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})"
+            v['file']['link'] = f"[{v.get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})" # pylint: disable=line-too-long
             try:
                 if not dq.match(v, where_query):
                     continue
             except Exception as exc:
-                raise Exception(where_query) from exc
+                raise Exception(where_query) from exc # pylint: disable=broad-exception-raised
             out.write(env.from_string(tpl).render(el=v))
             out.write("\n")
 
+
+def render_table_header(select_list, out):
+    """renders markdown table header"""
+    out.write("|")
+    out.write("|".join(select_list))
+    out.write("|\n")
+    out.write("|")
+    out.write("--|"*len(select_list))
+    out.write("\n")
