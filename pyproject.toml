@@ -31,3 +31,6 @@ dataview = "mkdocs_dataview.plugin:DataViewPlugin"
 addopts = [
     "--import-mode=importlib",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "mkdocs_dataview.__version__"}
