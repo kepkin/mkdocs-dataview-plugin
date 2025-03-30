@@ -1,6 +1,5 @@
 [project]
 name = "mkdocs-dataview"
-version = "0.0.1"
 authors = [
   { name="Alexander Nevskiy", email="kepkin@gmail.com" },
 ]
@@ -13,6 +12,8 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
 ]
 
+dynamic = ["version"]
+
 dependencies = [
   "dictquery == 0.5.0",
   "python-frontmatter == 1.1.0",
@@ -20,7 +21,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project.entry-points."mkdocs.plugins"]
