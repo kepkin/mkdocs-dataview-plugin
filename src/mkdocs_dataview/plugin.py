@@ -1,6 +1,7 @@
 """
 This module allows to render 'dataview' fences based on collected data in metadata in .md files.
 """
+from abc import ABC, abstractmethod
 from collections import defaultdict
 import io
 import os
@@ -18,16 +19,32 @@ from mkdocs.structure.pages import Page
 
 from . import utils
 
+class IndexBuilder(ABC):
+    """Interface for building an Index"""
+    @abstractmethod
+    def add_tag(self, tag: str, metadata: dict) -> None: # pylint: disable=missing-function-docstring
+        pass
+
+    @abstractmethod
+    def add_file(self, file_path: str, metadata: dict) -> None: # pylint: disable=missing-function-docstring
+        pass
+
 
 class DataViewPluginConfig(base.Config):
     """Config file for the mkdocs plugin."""
 
 
-class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
+class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
     """Data View plugin main class."""
     def __init__(self):
         self.sources = {}
         self.tags = defaultdict(list)
+
+    def add_tag(self, tag: str, metadata: dict) -> None:
+        self.tags[tag].append(metadata)
+
+    def add_file(self, file_path: str, metadata: dict) -> None:
+        self.sources[file_path] = metadata
 
     def on_files(self, files: Files, *, config: MkDocsConfig) -> Files | None:
         genderated_files_list = []
@@ -41,7 +58,16 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
             if rf:
                 files.remove(rf)
             tplf = files.src_uris[f + '.mdtmpl']
-            shutil.copyfile(tplf.abs_src_path, tplf.abs_src_path[:-4])
+
+            # maybe this logic should be more complicated (check for .md modificaiton with
+            # existing .mdtmpl)
+            # copy .mdtmpl to .md only if it's need. Otherwise mkdocs will enter in infinite loop
+            # in serve mode
+            abs_target_path = tplf.abs_src_path[:-4]
+            if os.path.exists(abs_target_path):
+                if os.path.getmtime(abs_target_path) < os.path.getmtime(tplf.abs_src_path):
+                    shutil.copyfile(tplf.abs_src_path, tplf.abs_src_path[:-4])
+
             files.append(File(
                     tplf.src_path[:-4],
                     config['docs_dir'],
@@ -65,7 +91,9 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
 
         line_stream = io.StringIO(markdown)
         output = io.StringIO()
-        self.render_str(line_stream, output, page.meta, page.url)
+
+        this_metadata = self.sources[os.path.join(config.docs_dir, page.file.src_uri)]
+        self.render_str(line_stream, output, this_metadata, page.url)
 
         result = output.getvalue()
         output.close()
@@ -78,23 +106,10 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
         with open(path, 'r', encoding="utf-8-sig") as file:
             return frontmatter.load(file)
 
-    def _on_file(self, path: str, target_url: str):
-        obj = self.load_file(path)
-        if obj.metadata.get("generated_ignore"):
-            return
-
-        if obj.metadata.get('file') is not None:
-            raise Exception("unexpected `file` parameter in frontmatter ", path) # pylint: disable=broad-exception-raised
-
-        obj.metadata['file'] = {
-            'path': target_url,
-            'name': os.path.basename(path)
-        }
-        self.sources[path] = obj.metadata
-
-        if 'tags' in obj.metadata:
-            for tag in obj.metadata['tags']:
-                self.tags[tag].append(obj.metadata)
+    def _on_file(self, file_path: str, target_url: str):
+        """common method to scan file to build index"""
+        data = self.load_file(file_path)
+        build_index(data, file_path, target_url, self)
 
     def collect_data(self, root_path: str):
         """searches for all .md, .mdtmpl files (used in cli mode)"""
@@ -105,7 +120,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
                 target_url = path_without_extension + '.md'
             self._on_file(file_path, target_url)
 
-    def render_str(self, line_stream, out, metadata, path):
+    def render_str(self, line_stream, out, this_metadata, path):
         """renders from line_stream to out"""
         frontmatter_expecting = True
 
@@ -127,8 +142,8 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
                 out.write(line)
 
             else:
-                if line == "```\n":
-                    self.render_query(query, metadata, out, path)
+                if line.rstrip() == "```":
+                    self.render_query(query, this_metadata, out, path)
                     in_data_view = False
                     query = ""
                     continue
@@ -149,46 +164,63 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
             with open(new_file_path, 'w', encoding="utf-8-sig") as file_out:
                 self.render_file(full_path_file, file_out)
 
-    def render_query(self, query, metadata, out, out_path=''):
+    def render_query(self, query, this_metadata, out, out_path=''):
         """replaces context variable in where clause and then renders markdown table"""
         select_list_str, where_query = query.split("WHERE",2)
         select_list = [i.strip() for i in select_list_str.split(',')]
 
-        rendered_where_query = self.render_where_clause(where_query, metadata)
+        rendered_where_query = self.render_where_clause(where_query, this_metadata)
         return self.render_table(select_list, rendered_where_query, out, out_path)
 
-    def split_token(self, where_query):
-        """generator for where clause tokens"""
-        token = ""
-        for i in where_query:
-            if i in [',', '(', ')', '+', '-', '*', '/', '[', ']']:
-                if token:
-                    yield token
-                    token = ""
-                yield i
-                continue
 
-            if i in [' ', '\t', '\n']:
-                if token:
-                    yield token
-
-                token = ""
-                continue
-
-            token += i
-
-        if token:
-            yield token
-
-    def render_where_clause(self, where_query, metadata):
+    def render_where_clause(self, where_query, this_metadata): # pylint: disable=too-many-branches
         """replaces context variable in where clause"""
         result = []
 
-        for t in self.split_token(where_query):
+        for t in split_token(where_query):
             t = t.strip()
-            if t.startswith('this.file.metadata.'):
-                t = repr(metadata.get(t[len('this.file.metadata.'):]))
-            result.append(t)
+            if t.startswith('this.'):
+                lookup_value = this_metadata
+
+                for k in t[len('this.'):].split('.'):
+                    lookup_value = lookup_value.get(k)
+                    if lookup_value is None:
+                        break
+
+                result.append(repr(lookup_value))
+            elif t.startswith('`this.'):
+                lookup_value = this_metadata
+
+                for k in t[len('`this.'):-1].split('.'):
+                    lookup_value = lookup_value.get(k)
+                    if lookup_value is None:
+                        break
+
+                result.append(repr(lookup_value))
+
+            # make split_token return type of token and process only variables.
+            elif t in ['+', '-', '*', '/', '!=', '==',
+                       '[', ']', ',', '(', ')',
+                       'and', 'or', 'AND', 'OR', 'not', 'NOT',
+                       'in', 'IN', 'CONTAINS', 'contains',
+                       'null', 'NULL']:
+                result.append(t)
+            elif t.startswith('"'):
+                result.append(t)
+            elif t.startswith("'"):
+                result.append(t)
+            elif t.startswith('`metadata.'):
+                result.append(t)
+            elif t.startswith('`file.'):
+                result.append(t)
+            elif t == 'metadata':
+                result.append(t)
+            elif t == '`metadata`':
+                result.append(t)
+            else:
+                if t[0] == '`':
+                    t = t[1:-1]
+                result.append('`metadata.' + t + '`')
 
         return ' '.join(result)
 
@@ -200,20 +232,19 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig]):
 
         tpl = "|"
         for v in select_list:
-            if v.split('.', 1)[0] == "file":
-                tpl += f" {{{{ el.{v} }}}} |"
-            else:
-                tpl += f" {{{{ el['{v}'] }}}} |"
+            tpl += " {{ dataview['" + "']['".join(v.split('.')) + "'] }} |"
 
         for _, v in self.sources.items():
-            v['file']['link'] = f"[{v.get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})" # pylint: disable=line-too-long
+            v['file']['link'] = f"[{v['metadata'].get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})" # pylint: disable=line-too-long
             try:
                 if not dq.match(v, where_query):
                     continue
+                out.write(env.from_string(tpl).render(dataview=v))
+                out.write("\n")
             except Exception as exc:
-                raise Exception(where_query) from exc # pylint: disable=broad-exception-raised
-            out.write(env.from_string(tpl).render(el=v))
-            out.write("\n")
+                # raises already post processed where_query
+                raise Exception(where_query, tpl, v) from exc # pylint: disable=broad-exception-raised
+
 
 
 def render_table_header(select_list, out):
@@ -224,3 +255,74 @@ def render_table_header(select_list, out):
     out.write("|")
     out.write("--|"*len(select_list))
     out.write("\n")
+
+
+def build_index(
+        data: frontmatter.Post,
+        file_path: str,
+        target_url: str,
+        builder: IndexBuilder
+        ) -> None:
+    """
+    Updates index from frontmatter.Post object
+    """
+    if data.metadata.get("generated_ignore"):
+        return
+
+    if data.metadata.get('file') is not None:
+        raise Exception("unexpected `file` parameter in frontmatter ", file_path) # pylint: disable=broad-exception-raised
+
+    result_dataview_metadata = {
+        "metadata": data.metadata,
+        "file": {
+            'path': target_url,
+            'name': os.path.basename(file_path)
+        }
+    }
+
+    builder.add_file(file_path, result_dataview_metadata)
+
+    if 'tags' in data.metadata:
+        for tag in data.metadata['tags']:
+            builder.add_tag(tag, result_dataview_metadata)
+
+
+def split_token(where_query):
+    """generator for where clause tokens"""
+    token = ""
+    constant_phase = ''
+    for i in where_query:
+        if i in ["'", '"', '`'] and constant_phase == '':
+            constant_phase = i
+            if token:
+                yield token
+                token = ""
+            token += i
+            continue
+
+        if constant_phase != '':
+            token += i
+            if i == constant_phase:
+                constant_phase = ''
+                yield token
+                token = ""
+            continue
+
+        if i in [',', '(', ')', '+', '-', '*', '/', '[', ']', '!=', '==']:
+            if token:
+                yield token
+                token = ""
+            yield i
+            continue
+
+        if i in [' ', '\t', '\n']:
+            if token:
+                yield token
+
+            token = ""
+            continue
+
+        token += i
+
+    if token:
+        yield token
