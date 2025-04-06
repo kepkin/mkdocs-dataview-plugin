@@ -7,17 +7,22 @@ import io
 import os
 import shutil
 
-import dictquery as dq
 import frontmatter
 
-from jinja2.sandbox import SandboxedEnvironment
 from mkdocs.config import base
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.plugins import BasePlugin
 from mkdocs.structure.files import Files, File
 from mkdocs.structure.pages import Page
+from mkdocs_dataview.parser import (
+    execute_expression_list,
+    execute_where_clause,
+    execute_get_select_column_names,
+)
 
 from . import utils
+
+__debug_log_file__ = None
 
 class IndexBuilder(ABC):
     """Interface for building an Index"""
@@ -39,6 +44,12 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
     def __init__(self):
         self.sources = {}
         self.tags = defaultdict(list)
+        self.renderer = RendererWithContext(self.sources)
+        self._log_toggle = False
+
+    def _log(self, *args, **kwargs) -> None:
+        if self._log_toggle:
+            print(*args, **kwargs)
 
     def add_tag(self, tag: str, metadata: dict) -> None:
         self.tags[tag].append(metadata)
@@ -92,11 +103,15 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
         line_stream = io.StringIO(markdown)
         output = io.StringIO()
 
+        if os.path.basename(page.file.abs_src_path) == __debug_log_file__:
+            self.renderer.toggle_log(True)
+
         this_metadata = self.sources[os.path.join(config.docs_dir, page.file.src_uri)]
         self.render_str(line_stream, output, this_metadata, page.url)
 
         result = output.getvalue()
         output.close()
+        self.renderer.toggle_log(False)
         return result
 
     def load_file(self, path: str):
@@ -108,8 +123,19 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
 
     def _on_file(self, file_path: str, target_url: str):
         """common method to scan file to build index"""
+
+        if os.path.basename(file_path) == __debug_log_file__:
+            self._log_toggle = True
+
+        self._log("*"*80)
+        self._log("load_file", file_path)
+
         data = self.load_file(file_path)
+
+        self._log(data.metadata)
+        self._log("*"*80)
         build_index(data, file_path, target_url, self)
+        self._log_toggle = False
 
     def collect_data(self, root_path: str):
         """searches for all .md, .mdtmpl files (used in cli mode)"""
@@ -139,21 +165,41 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
                     in_data_view = True
                     continue
 
-                out.write(line)
+                self.render_line(line, this_metadata, out)
 
             else:
                 if line.rstrip() == "```":
-                    self.render_query(query, this_metadata, out, path)
+                    self.renderer.render_query(query, this_metadata, out, path)
                     in_data_view = False
                     query = ""
                     continue
 
                 query += line
 
+    def render_line(self, line, this_metadata, out) -> str:
+        """allows to render inplace datavew queries"""
+        for line_part in split_inline_query(line):
+            if line_part.startswith("`= "):
+                identifiers = {}
+                identifiers['this'] = this_metadata
+                print("---- RENDER")
+
+                result = execute_expression_list(line_part[3:-1], identifiers)
+                print(line_part[3:-1])
+                print(result)
+                out.write(result[0])
+                continue
+            out.write(line_part)
+
     def render_file(self, path, out):
         """renders file"""
         obj = self.load_file(path)
-        self.render_str(io.StringIO(obj.content), out, obj.metadata, path)
+        # cause obj.metadata doesn't have metadata, we had to render it first here
+        out.write("---\n")
+        out.write("generated_ignore: true\n")
+        out.write(frontmatter.YAMLHandler().export(obj.metadata))
+        out.write("\n---\n")
+        self.render_str(io.StringIO(obj.content), out, self.sources[path], path)
 
     def render_all_templates(self, path: str):
         """renders all files in cli mode"""
@@ -161,90 +207,69 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
             new_file_path, _ = os.path.splitext(full_path_file)
             new_file_path += ".md"
 
+            if os.path.basename(new_file_path) == __debug_log_file__:
+                self.renderer.toggle_log(True)
+
             with open(new_file_path, 'w', encoding="utf-8-sig") as file_out:
                 self.render_file(full_path_file, file_out)
 
-    def render_query(self, query, this_metadata, out, out_path=''):
-        """replaces context variable in where clause and then renders markdown table"""
-        select_list_str, where_query = query.split("WHERE",2)
-        select_list = [i.strip() for i in select_list_str.split(',')]
-
-        rendered_where_query = self.render_where_clause(where_query, this_metadata)
-        return self.render_table(select_list, rendered_where_query, out, out_path)
+            self.renderer.toggle_log(False)
 
 
-    def render_where_clause(self, where_query, this_metadata): # pylint: disable=too-many-branches
-        """replaces context variable in where clause"""
-        result = []
+class RendererWithContext:
+    """Class for rendering dataview queries based on context"""
 
-        for t in split_token(where_query):
-            t = t.strip()
-            if t.startswith('this.'):
-                lookup_value = this_metadata
+    def __init__(self, sources):
+        self.sources = sources
+        self.log_toggle = False
 
-                for k in t[len('this.'):].split('.'):
-                    lookup_value = lookup_value.get(k)
-                    if lookup_value is None:
-                        break
+    def toggle_log(self, v: bool) -> None:
+        """turns on/off debug logging"""
+        self.log_toggle = v
 
-                result.append(repr(lookup_value))
-            elif t.startswith('`this.'):
-                lookup_value = this_metadata
+    def log(self, *args, **kwargs) -> None:
+        """use it for debugging"""
+        if self.log_toggle:
+            print(*args, **kwargs)
 
-                for k in t[len('`this.'):-1].split('.'):
-                    lookup_value = lookup_value.get(k)
-                    if lookup_value is None:
-                        break
-
-                result.append(repr(lookup_value))
-
-            # make split_token return type of token and process only variables.
-            elif t in ['+', '-', '*', '/', '!=', '==',
-                       '[', ']', ',', '(', ')',
-                       'and', 'or', 'AND', 'OR', 'not', 'NOT',
-                       'in', 'IN', 'CONTAINS', 'contains',
-                       'null', 'NULL']:
-                result.append(t)
-            elif t.startswith('"'):
-                result.append(t)
-            elif t.startswith("'"):
-                result.append(t)
-            elif t.startswith('`metadata.'):
-                result.append(t)
-            elif t.startswith('`file.'):
-                result.append(t)
-            elif t == 'metadata':
-                result.append(t)
-            elif t == '`metadata`':
-                result.append(t)
-            else:
-                if t[0] == '`':
-                    t = t[1:-1]
-                result.append('`metadata.' + t + '`')
-
-        return ' '.join(result)
-
-    def render_table(self, select_list, where_query, out, out_path):
+    def render_table(self, select_list, where_query, this_metadata, out, out_path):  # pylint: disable=too-many-positional-arguments,too-many-arguments
         """renders markdown table"""
-        env = SandboxedEnvironment()
 
-        render_table_header(select_list, out)
-
-        tpl = "|"
-        for v in select_list:
-            tpl += " {{ dataview['" + "']['".join(v.split('.')) + "'] }} |"
+        render_table_header(execute_get_select_column_names(select_list), out)
 
         for _, v in self.sources.items():
-            v['file']['link'] = f"[{v['metadata'].get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})" # pylint: disable=line-too-long
+            identifiers = {}
+            identifiers['metadata'] = v['metadata']
+            identifiers['this'] = this_metadata
+            identifiers['file'] = v['file']
+            identifiers['file']['link'] = f"[{v['metadata'].get('title', os.path.basename(v['file']['path']))}]({os.path.relpath(v['file']['path'], os.path.dirname(out_path))})" # pylint: disable=line-too-long
             try:
-                if not dq.match(v, where_query):
+                match = execute_where_clause(where_query, identifiers)
+                self.log("------")
+                self.log("   query:", where_query)
+                self.log("   match:", match, identifiers)
+
+                if not match:
                     continue
-                out.write(env.from_string(tpl).render(dataview=v))
-                out.write("\n")
+
+                row_list = execute_expression_list(select_list, v)
+                out.write("|")
+                out.write("|".join([str(i) for i in row_list]))
+                out.write("|\n")
             except Exception as exc:
                 # raises already post processed where_query
-                raise Exception(where_query, tpl, v) from exc # pylint: disable=broad-exception-raised
+                raise Exception(where_query, select_list, v) from exc # pylint: disable=broad-exception-raised
 
+    def render_query(self, query, this_metadata, out, out_path=''):
+        """replaces context variable in where clause and then renders markdown table"""
+        select_list_str, expression = query.split("WHERE",2)
+        return self.render_table(
+            select_list_str,
+            "WHERE " + expression,
+            this_metadata,
+            out,
+            out_path
+        )
 
 
 def render_table_header(select_list, out):
@@ -287,42 +312,21 @@ def build_index(
             builder.add_tag(tag, result_dataview_metadata)
 
 
-def split_token(where_query):
-    """generator for where clause tokens"""
-    token = ""
-    constant_phase = ''
-    for i in where_query:
-        if i in ["'", '"', '`'] and constant_phase == '':
-            constant_phase = i
-            if token:
-                yield token
-                token = ""
-            token += i
-            continue
+def split_inline_query(line):
+    """splits linke into text and ticks part"""
+    i = 0
 
-        if constant_phase != '':
-            token += i
-            if i == constant_phase:
-                constant_phase = ''
-                yield token
-                token = ""
-            continue
+    while i <= len(line):
+        next_l = line.find("`", i)
+        if next_l == -1:
+            yield line[i:]
+            return
 
-        if i in [',', '(', ')', '+', '-', '*', '/', '[', ']', '!=', '==']:
-            if token:
-                yield token
-                token = ""
-            yield i
-            continue
+        next_r = line.find("`", next_l + 1)
+        if next_r == -1:
+            yield line[i:]
+            return
 
-        if i in [' ', '\t', '\n']:
-            if token:
-                yield token
-
-            token = ""
-            continue
-
-        token += i
-
-    if token:
-        yield token
+        yield line[i:next_l]
+        yield line[next_l:next_r+1]
+        i = next_r+1
