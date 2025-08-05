@@ -15,9 +15,9 @@ classifiers = [
 dynamic = ["version"]
 
 dependencies = [
-  "lark == 1.2.2",
-  "python-frontmatter == 1.1.0",
-  "mkdocs == 1.5.3",
+  "lark >= 1.2.2",
+  "python-frontmatter >= 1.1.0",
+  "mkdocs >= 1.5.3",
 ]
 
 [build-system]
