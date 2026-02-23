@@ -1,14 +1,17 @@
+"""
+This module provides the RendererWithContext class for rendering dataview queries in markdown.
+"""
 import os
 from mkdocs_dataview.query.solvers import ExpressionSolverService
 from mkdocs_dataview.query.solvers import QueryService
 
 
 class RenderError(Exception):
-    pass
+    """Root exception for all render errors."""
 
 
 class RendererWithContext:
-    """Class for rendering dataview queries based on context"""
+    """Class for rendering dataview queries in markdownas TABLE or LIST"""
 
     def __init__(self, sources):
         self.sources = sources

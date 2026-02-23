@@ -1,3 +1,6 @@
+"""
+This module contains the FilePlugin class for rendering files in a standalone mode.
+"""
 import io
 import os
 import frontmatter
@@ -11,6 +14,7 @@ __debug_log_file__ = None
 
 
 class FilePlugin():
+    """Plugin for handling file-based rendering and data collection."""
     def __init__(self):
         self.index = SimpleMemoryIndex()
         self.sources = {}
@@ -22,7 +26,7 @@ class FilePlugin():
         self.log_toggle = v
 
     def _log(self, *args, **kwargs) -> None:
-        """use it for debugging"""
+        """internal method to use for debugging"""
         if self.log_toggle:
             print(*args, **kwargs)
 
@@ -52,7 +56,7 @@ class FilePlugin():
 
     def load_file(self, path: str):
         """
-        Loads a file and processes it with the appropriate processor.
+        Helper method to load a file with correct encoding and return it's metadata.
         """
         with open(path, 'r', encoding="utf-8-sig") as file:
             return frontmatter.load(file)

@@ -1,3 +1,7 @@
+"""
+This module defines abstract interface for building an index and a simple in-memory
+implementation of it.
+"""
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import os
@@ -16,19 +20,23 @@ class IndexBuilder(ABC):
         pass
 
 
-# Builds metadata and links based on paths and frontmatter _PositiveInteger
-#
-# Does some checks:
-#  - ignores file from index if it has attribute `generated_ignore`
-#  - does checks that frontmatter doesn't override any "system" attributes like `file`, `ctime`
 def build_index(
         data: frontmatter.Post,
         file_path: str,
         target_url: str,
         builder: IndexBuilder
         ) -> None:
-    """
-    Updates index from frontmatter.Post object
+    """Builds metadata and links based on paths and frontmatter
+
+    Does some checks:
+     - ignores file from index if it has attribute `generated_ignore`
+     - does checks that frontmatter doesn't override any "system" attributes like `file`, `ctime`
+
+    Arguments:
+    data -- full frontmatter.Post object
+    file_path -- path to the file (added to metadata)
+    target_url -- url to the file (added to metadata)
+    builder -- IndexBuilder implementation
     """
     if data.metadata.get("generated_ignore"):
         return
@@ -58,6 +66,7 @@ def build_index(
 
 
 class SimpleMemoryIndex(IndexBuilder):
+    """A simple in-memory implementation of the IndexBuilder interface."""
     def __init__(self):
         self.sources = {}
         self.tags = defaultdict(list)

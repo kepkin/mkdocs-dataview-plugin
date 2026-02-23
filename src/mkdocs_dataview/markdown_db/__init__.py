@@ -1,5 +1,8 @@
 """
-__init__ module for dataview package
+Module for handling markdown files.
+
+- building an index of them
+- rendering them
 """
 
 __version__ = "0.0.0.dev"

@@ -8,19 +8,44 @@ from .grammar import LARK_GRAMMAR
 
 
 class QueryError(Exception):
-    pass
+    """Base class for errors in dataview queries."""
 
 
 class FuncitonCallError(QueryError, NameError):
-    pass
+    """Error raised when a function is unknown."""
 
 
 class TransformationError(QueryError):
-    pass
-
+    """Error raised during lark tree transformation."""
 
 
 class QueryService():
+    """Service for parsing and executing dataview queries.
+
+    Typical usage::
+        query = QueryService("TABLE file.link FROM #tag WHERE metadata.a + metadata.b > 10")
+
+        # You must implement your own filter of files based on FROM clause
+        # Simple example:
+
+        sources = query.get_sources()
+        if sources[0]["type"] == "tag" and sources[0]["value"] in my_file_tags:
+            # include this file for further processing
+        ...
+        # retrieve file attributes
+        file_attributes = {
+            "file": {
+                "link": ...
+            },
+            "metadata": {
+                "a": 1,
+                "b": 2,
+            }
+        }
+        if query.where(file_attributes):
+            # include this file for further processing
+
+    """
     def __init__(self, query):
         self.query = query
         self.lark = Lark(LARK_GRAMMAR, start='full_clause')
@@ -28,7 +53,6 @@ class QueryService():
         parsed_data = FullClauseInterpreter().visit(self.tree)
         self.data = {}
 
-        # @TODO: maybe it's easier to rewrite using Tree.find_smt?
         for v in parsed_data:
             if v is None:
                 # @TODO: it must be optional "from_clause" or where_clause??
@@ -38,33 +62,80 @@ class QueryService():
                 self.data[v["type"]] = v["value"]
 
     def get_render_type(self):
+        """Returns the view type of the query (e.g., TABLE, LIST)."""
         return self.data["view_type"]
 
     def get_sources(self):
+        """Returns the sources defined in the FROM clause.
+
+        Supportes types now:
+         - tag
+         - path
+
+        Expect the following format:
+        [
+            {
+                "type": "tag",
+                "value": "tag"
+            },
+            ...
+        ]
+        """
         if self.data.get("from_clause"):
             return SourcesInterpreter().visit(self.data["from_clause"])
 
         return []
 
     def columns(self):
+        """Returns the names of the columns to be selected.
+
+        Expect the following format:
+        [
+            "file.link",
+            "metadata.a + metadata.b",
+            ...
+        ]
+        """
         return SelectClauseColumnNamesTransformer().visit(self.data["select_clause"])
 
     def render_columns(self, identifiers):
+        """Renders the column values for a given set of identifiers.
+
+        Expect the following format:
+        [
+            <rendered value1>,
+            <rendered value2>,
+            ...
+        ]
+        """
         return ExpressionSolver(identifiers).transform(self.data["select_clause"])
 
     def get_where_expression(self):
+        """Returns a internal tree representation of the WHERE clause.
+
+        It's main purpose is for debugging / error creation. Maybe we change it in the future.
+        """
         if self.data.get("where_clause"):
             return self.data["where_clause"].pretty()
 
         return ""
 
     def where(self, identifiers):
+        """Evaluates the WHERE clause for a given set of identifiers.
+
+        Args:
+            identifiers (dict): A dictionary of identifiers to be used in the WHERE clause.
+
+        Returns:
+            bool: True if the WHERE clause evaluates to True, False otherwise.
+        """
         if self.data.get("where_clause"):
             return ExpressionSolver(identifiers).transform(self.data["where_clause"])
 
         return True
 
 
+# pylint: disable=missing-function-docstring
 class FullClauseInterpreter(Interpreter):
     """
     Interpreter that returns list of query parts.
@@ -89,37 +160,11 @@ class FullClauseInterpreter(Interpreter):
     Example usage:
 
     sources = FullClauseInterpreter().visit(tree)
-
-
-
-
     """
     def tag_source(self, tree):
-        # tag_source : "#" identifier
-        # identifier is a child
-        # We need to get the value of identifier
-        # identifier returns a string in SolveTransformation, but here we are
-        # visiting the tree
-        # tree.children[0] is the identifier node (or token if it was a
-        # terminal, but identifier is a rule)
-        # Wait, identifier rule: identifier : IDENTIFIER
-        # So tree.children[0] is a Token or a Tree?
-        # In parser.py: identifier : IDENTIFIER
-        # So it's a rule.
-
-        # Let's look at the tree structure.
-        # tag_source -> identifier -> IDENTIFIER token
-
-        # We can just extract the text from the identifier subtree
-        # Or simpler: just get the text of the whole tag_source node
-        # But we want the tag name.
-
-        # Let's traverse down to identifier
+        """Processes a tag source in a query."""
         identifier_node = tree.children[0]
-        # identifier node has one child: the token
         tag_name = identifier_node.children[0].value
-        # Remove backticks if present (handled in identifier rule usually but
-        # here we access token directly)
         if tag_name.startswith('`'):
             tag_name = tag_name[1:-1]
 
@@ -138,7 +183,9 @@ class FullClauseInterpreter(Interpreter):
         return {'type': 'where_clause', 'value': tree}
 
 
+# pylint: disable=missing-function-docstring
 class SelectClauseColumnNamesTransformer(Interpreter):
+    """Transformer for extracting column names from a SELECT clause."""
 
     def aliased_select_expression(self, tree):
         v = self.visit_children(tree)
@@ -222,6 +269,7 @@ class SelectClauseColumnNamesTransformer(Interpreter):
         return "not " + v[0]
 
 
+# pylint: disable=missing-function-docstring
 class SourcesInterpreter(Interpreter):
     """
     Interpreter that collects all sources from the FROM clause.
@@ -231,28 +279,8 @@ class SourcesInterpreter(Interpreter):
     sources = SourcesInterpreter().visit(tree)
     """
     def tag_source(self, tree):
-        # tag_source : "#" identifier
-        # identifier is a child
-        # We need to get the value of identifier
-        # identifier returns a string in SolveTransformation, but here we are
-        # visiting the tree
-        # tree.children[0] is the identifier node (or token if it was a
-        # terminal, but identifier is a rule)
-        # Wait, identifier rule: identifier : IDENTIFIER
-        # So tree.children[0] is a Token or a Tree?
-        # In parser.py: identifier : IDENTIFIER
-        # So it's a rule.
-
-        # Let's look at the tree structure.
-        # tag_source -> identifier -> IDENTIFIER token
-
-        # We can just extract the text from the identifier subtree
-        # Or simpler: just get the text of the whole tag_source node
-        # But we want the tag name.
-
-        # Let's traverse down to identifier
+        """Processes a tag source in the FROM clause."""
         identifier_node = tree.children[0]
-        # identifier node has one child: the token
         tag_name = identifier_node.children[0].value
         # Remove backticks if present (handled in identifier rule usually but
         # here we access token directly)
@@ -262,11 +290,6 @@ class SourcesInterpreter(Interpreter):
         return {'type': 'tag', 'value': tag_name}
 
     def path_source(self, tree):
-        # path_source : "\"" path "\""
-        # path is a rule: path : CNAME ("/" CNAME)*
-        # We want the full path string.
-        # We can reconstruct it from children of path node.
-
         path_node = tree.children[0]
         path_parts = [t.value for t in path_node.children]
         path_value = "/".join(path_parts)
@@ -357,6 +380,7 @@ def dataview_default(value, default_val) -> tuple[str, any]:
 
 # pylint: disable=too-few-public-methods
 class ExpressionSolverService():
+    """Helper service for solving individual expressions with Lark."""
     def __init__(self, expression):
         lark = Lark(LARK_GRAMMAR, start='expression')
         try:
@@ -366,10 +390,12 @@ class ExpressionSolverService():
             raise
 
     def solve(self, identifiers=None):
+        """Solves the expression using the provided identifiers."""
         return ExpressionSolver(identifiers).transform(self.tree)
 
 
 # pylint: disable=too-many-public-methods
+# pylint: disable=missing-function-docstring
 class ExpressionSolver(Transformer):
     """
     This class is not intended to be used directly. Use ExpersionSolverService instead.

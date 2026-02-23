@@ -1,3 +1,6 @@
+"""
+This module defines the LARK grammar for the dataview query language.
+"""
 # Quick recap for LARK grammar
 #
 # Without `?`:
