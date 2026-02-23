@@ -45,7 +45,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
     def add_file(self, file_path: str, metadata: dict) -> None:
         self.sources[file_path] = metadata
 
-    def on_files(self, files: Files, *, config: MkDocsConfig) -> Files | None:
+    def on_files(self, files: Files, /, *, config: MkDocsConfig) -> Files | None:
         genderated_files_list = []
         for f in files:
             path_without_extension, extension = os.path.splitext(f.src_uri)
@@ -82,8 +82,8 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
         return files
 
     def on_page_markdown(
-        self, markdown: str, *, page: Page, config: MkDocsConfig, files: Files
-    ) -> str:
+        self, markdown: str, /, *, page: Page, config: MkDocsConfig, files: Files
+    ) -> str | None:
         """
         Find all dataview fences and replace them with the rendered markdown table
         """
