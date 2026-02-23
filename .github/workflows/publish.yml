@@ -30,6 +30,7 @@ jobs:
         run: |
           echo ${GITHUB_REF_NAME}
           sed -i.bak "s/0.0.0.dev/${GITHUB_REF_NAME}/" src/mkdocs_dataview/__init__.py
+          sed -i.bak "s/0.0.0.dev/${GITHUB_REF_NAME}/" src/mkdocs_dataview/markdown_db/__init__.py
           cat src/mkdocs_dataview/__init__.py
           python -m pip install build
           python -m build
