@@ -1,25 +1,27 @@
-from lark import Lark
-from mkdocs_dataview.query.solvers import SelectClauseColumnNamesTransformer, LARK_GRAMMAR
+# pylint: disable=wildcard-import, method-hidden, missing-function-docstring, missing-module-docstring, protected-access
 import sys
 
+from lark import Lark
+from mkdocs_dataview.query.solvers import SelectClauseColumnNamesTransformer, LARK_GRAMMAR
+
 def get_linenumber():
-  return sys._getframe().f_back.f_lineno
+    return sys._getframe().f_back.f_lineno
 
 def test_column_names(subtests):
     tests = [
         [
             get_linenumber(),
-            r"""metadata.featureID as "featureID", file.link, metadata.a + metadata.b""", 
+            r"""metadata.featureID as "featureID", file.link, metadata.a + metadata.b""",
             ['featureID', 'file.link', 'metadata.a + metadata.b'],
         ],
         [
             get_linenumber(),
-            r"""1 + 1""", 
+            r"""1 + 1""",
             ['1 + 1'],
         ],
         [
             get_linenumber(),
-            r"""file.link""", 
+            r"""file.link""",
             ['file.link'],
         ]
     ]

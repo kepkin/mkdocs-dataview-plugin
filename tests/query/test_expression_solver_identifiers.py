@@ -1,8 +1,11 @@
+# pylint: disable=wildcard-import, method-hidden, missing-function-docstring, missing-module-docstring, protected-access
 import sys
-from mkdocs_dataview.query import ExpressionSolverService
+from mkdocs_dataview.query.solvers import ExpressionSolverService
+
 
 def get_linenumber():
-  return sys._getframe().f_back.f_lineno
+    return sys._getframe().f_back.f_lineno
+
 
 def test(subtests):
     identifiers = {
@@ -22,15 +25,15 @@ def test(subtests):
     tests = [
         [
             get_linenumber(),
-            r"""1+1""", 
+            r"""1+1""",
             2,
         ],[
             get_linenumber(),
-            r"""metadata.a + metadata.b > 10""", 
+            r"""metadata.a + metadata.b > 10""",
             False,
         ],[
             get_linenumber(),
-            r"""metadata.a + metadata.c > 10""", 
+            r"""metadata.a + metadata.c > 10""",
             True,
         ],[
             get_linenumber(),
@@ -71,7 +74,7 @@ def test(subtests):
         ]
     ]
 
-    for i, (line_number, query, expected_result) in enumerate(tests):
+    for line_number, query, expected_result in tests:
         with subtests.test(msg=f"Interpreter test line [{line_number}]: `{query}`"):
             res = ExpressionSolverService(query).solve(identifiers)
             assert expected_result == res

@@ -1,17 +1,19 @@
+# pylint: disable=wildcard-import, method-hidden, missing-function-docstring, missing-module-docstring, protected-access
+import sys
+
 from lark import Lark
 from mkdocs_dataview.query.solvers import ExpressionSolver, LARK_GRAMMAR
-import sys
 
 
 def get_linenumber():
-  return sys._getframe().f_back.f_lineno
+    return sys._getframe().f_back.f_lineno
 
 
 def test_select_expression_values_transformer(subtests):
     tests = [
         [
             get_linenumber(),
-            r"""metadata.featureID as "featureID", file.link, metadata.a + metadata.b""", 
+            r"""metadata.featureID as "featureID", file.link, metadata.a + metadata.b""",
             {
                 "metadata": {
                     "featureID": "<feature-ID-value>",
@@ -26,7 +28,7 @@ def test_select_expression_values_transformer(subtests):
         ],
         [
             get_linenumber(),
-            r"""1 + 1""", 
+            r"""1 + 1""",
             {},
             [2],
         ]

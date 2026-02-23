@@ -1,12 +1,13 @@
-"""
-Tests for mkdocs dataview plugin
-"""
+# pylint: disable=wildcard-import, method-hidden, missing-function-docstring, missing-module-docstring, protected-access
 import io
 from collections import defaultdict
 
 import frontmatter
 import mkdocs_dataview.plugin
 import mkdocs_dataview.markdown_db
+
+from mkdocs_dataview.markdown_db import render_table_header, split_inline_query
+
 
 ABC_OUT = """
 |a|b|c|
@@ -30,7 +31,7 @@ def test_table_header():
     out = io.StringIO()
     select_list = ['a', 'b', 'c']
 
-    mkdocs_dataview.markdown_db.render_table_header(select_list, out)
+    render_table_header(select_list, out)
 
     assert out.getvalue() == ABC_OUT[1:]
 
@@ -86,7 +87,4 @@ def test_split_inline_query():
     ]
 
     for query, expected_result in data:
-        assert list(mkdocs_dataview.markdown_db.split_inline_query(query)) == expected_result
-
-
-
+        assert list(split_inline_query(query)) == expected_result

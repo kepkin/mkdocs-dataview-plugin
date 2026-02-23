@@ -1,3 +1,4 @@
+# pylint: disable=wildcard-import, method-hidden, missing-function-docstring, missing-module-docstring, protected-access
 from mkdocs_dataview.query.solvers import ExpressionSolverService
 
 def test(subtests):
