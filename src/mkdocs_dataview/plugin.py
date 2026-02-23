@@ -96,11 +96,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
 
         this_metadata = self.sources[os.path.join(config.docs_dir, page.file.src_uri)]
 
-        try:
-            self.renderer.render_str(line_stream, output, this_metadata, page.url)
-        except:
-            print("failed to render markdown page: ", page.file.src_path)
-            raise
+        self.renderer.render_str(line_stream, output, this_metadata, page.url)
 
         result = output.getvalue()
         output.close()
