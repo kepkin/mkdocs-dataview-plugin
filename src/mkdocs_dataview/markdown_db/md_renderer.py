@@ -2,9 +2,11 @@
 This module provides the RendererWithContext class for rendering dataview queries in markdown.
 """
 import os
+
+from lark.exceptions import LarkError
+
 from mkdocs_dataview.query.solvers import ExpressionSolverService
 from mkdocs_dataview.query.solvers import QueryService
-
 
 class RenderError(Exception):
     """Root exception for all render errors."""
@@ -28,7 +30,12 @@ class RendererWithContext:
 
     # pylint: disable=too-many-positional-arguments,too-many-arguments
     def _render_table_source(self, qs, this_metadata, out, out_path, v):
-        sources = qs.get_sources()
+        self.log("------ render: ", out_path)
+
+        try:
+            sources = qs.get_sources()
+        except Exception as exc:
+            raise RenderError("Error in getting sources") from exc
 
         identifiers = {}
         identifiers['metadata'] = v['metadata']
@@ -49,6 +56,7 @@ class RendererWithContext:
                     break
 
             if not include_file:
+                self.log("------ skip file due to FROM clause: ", identifiers['file']['link'])
                 return
 
             match = qs.where(identifiers)
@@ -57,14 +65,18 @@ class RendererWithContext:
             self.log("   match:", match, identifiers)
 
             if not match:
+                self.log("------ skip file due to WHERE clause: ", identifiers['file']['link'])
                 return
+        except Exception as exc:
+            raise RenderError(f"Error in executing where clause: {identifiers}") from exc
 
+        try:
             row_list = qs.render_columns(v)
             out.write("|")
             out.write("|".join([str(i) for i in row_list]))
             out.write("|\n")
         except Exception as exc:
-            raise RenderError() from exc
+            raise RenderError(f"Error in rendering columns: {v}") from exc
 
     def render_table(self, qs, this_metadata, out, out_path):
         """renders markdown table"""
@@ -111,14 +123,13 @@ class RendererWithContext:
     def render_query(self, query, this_metadata, out, out_path=''):
         """replaces context variable in where clause and then renders markdown table"""
 
+        self.log("------ render query: ", query)
         try:
             qs = QueryService(query)
-        except:
-            # @TODO: learn how to raise exception
-            print()
-            raise
+        except Exception as exc:
+            raise RenderError(f"Error parsing query: {query}") from exc
 
-        if qs.get_render_type() == "LIST":
+        if qs.get_render_type() == "TABLE":
             self.render_table(
                 qs,
                 this_metadata,
@@ -165,12 +176,19 @@ class RendererWithContext:
 
     def render_line(self, line, this_metadata, out) -> str:
         """allows to render inplace datavew queries"""
+
         for line_part in split_inline_query(line):
             if line_part.startswith("`= "):
-                identifiers = {}
-                identifiers['this'] = this_metadata
-                result = ExpressionSolverService(line_part[3:-1]).solve(identifiers)
-                out.write(str(result))
+                try:
+                    identifiers = {}
+                    identifiers['this'] = this_metadata
+                    expression = line_part[3:-1]
+                    result = ExpressionSolverService(expression).solve(identifiers)
+                    out.write(str(result))
+                except LarkError:
+                    out.write(line_part)
+                except Exception as exc:
+                    raise RenderError(f"Error in executing expression: {expression}") from exc
                 continue
             out.write(line_part)
 

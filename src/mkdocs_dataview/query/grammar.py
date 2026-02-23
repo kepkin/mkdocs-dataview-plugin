@@ -53,7 +53,7 @@ tag_source : "#" identifier
 
 path_source : "\"" path "\""
 
-?path : CNAME ("/" CNAME)*
+path : CNAME ("/" CNAME)*
 
 
 //////////////////////////
