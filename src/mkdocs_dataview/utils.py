@@ -17,3 +17,25 @@ def enumerate_files_by_ext(path, ext_list=None):
 
         for dir_name in dirs:
             enumerate_files_by_ext(os.path.join(root, dir_name), ext_list)
+
+
+def deduce_value_type(value: str):
+    """
+    Tries to convert string value to appropriate type (bool, int, float)
+    """
+    if value.lower() == 'true':
+        return True
+    if value.lower() == 'false':
+        return False
+
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    return value

@@ -17,7 +17,12 @@ dynamic = ["version"]
 dependencies = [
   "lark == 1.2.2",
   "python-frontmatter == 1.1.0",
-  "mkdocs == 1.5.3",
+  "mkdocs == 1.6.1",
+  "markdown-callouts",
+  "mdx-gh-links",
+  "mkdocs",
+  "mkdocs-click",
+  "pymdown-extensions",
 ]
 
 [build-system]

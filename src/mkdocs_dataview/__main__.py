@@ -2,9 +2,9 @@
 Main module for running this module as external script on mkdocs.
 """
 
-from .plugin import DataViewPlugin
+from .markdown_db import FilePlugin
 
 if __name__ == "__main__":
-    sut = DataViewPlugin()
+    sut = FilePlugin()
     sut.collect_data("./docs")
     sut.render_all_templates("./docs")

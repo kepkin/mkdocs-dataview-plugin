@@ -1,0 +1,29 @@
+
+ - [ ] inline queries
+ - [ ] TABLE clause support
+    - [ ] column aliasing
+    - [ ] embedded metadata like file.link
+ - [ ] FROM clause support
+    - [ ] HASH tag
+ - [ ] WHERE clause support
+    - [ ] simple arithmetics
+    - [ ] nested arithmetics
+    - [ ] IN & CONTAINS operators
+    - [ ] grouping with braces
+    - [ ] NOT operator
+    - [ ] AND & OR operators
+    - [ ] comparison operators
+    - [ ] 
+ - [ ] ORDER BY clause support
+    - [ ] 
+ - [ ] functions
+    - [ ] average
+    - [ ] sum
+    - [ ] count
+    - [ ] max
+    - [ ] min
+    - [ ] typeof
+    - [ ] length
+ - [ ] GROUP BY clause support
+ - [ ] ERROR rendering 
+    

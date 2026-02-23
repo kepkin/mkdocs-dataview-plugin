@@ -43,3 +43,26 @@ plugins:
 ### As a separate tool
 
 In case you can't use plugin option, write markdowns files with `dataview`
+
+## Development
+
+Prepare environment
+
+````
+python -m venv .venv
+source .venv/bin/activate
+
+pip install .
+```
+
+Do some changes in the code and run tests:
+
+```bash
+pytest
+```
+
+You should also check that examples folder is working just by running:
+
+```bash
+mkdocs serve
+```

@@ -1,0 +1,2 @@
+- can't access nested object from metadata
+- incorrect tokenization of where clause if you have dash in string like `tag == "dashed-string-value"`
