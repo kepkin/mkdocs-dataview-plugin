@@ -20,7 +20,7 @@ from .markdown_db.index import IndexBuilder, build_index
 
 # Enter absolute path to the file for debugging.
 # e.g.: "/Users/john/mkdocs-dataview-plugin/docs/examples/library/index.md"
-__debug_log_file__ = None
+__debug_log_file__ = "/Users/aln/work/github/mkdocs-dataview-plugin/docs/examples/library/index.md"
 
 
 class DataViewPluginConfig(base.Config):
@@ -96,11 +96,7 @@ class DataViewPlugin(BasePlugin[DataViewPluginConfig], IndexBuilder):
 
         this_metadata = self.sources[os.path.join(config.docs_dir, page.file.src_uri)]
 
-        try:
-            self.renderer.render_str(line_stream, output, this_metadata, page.url)
-        except:
-            print("failed to render markdown page: ", page.file.src_path)
-            raise
+        self.renderer.render_str(line_stream, output, this_metadata, page.url)
 
         result = output.getvalue()
         output.close()

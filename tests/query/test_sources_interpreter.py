@@ -7,6 +7,8 @@ def test(subtests):
     tests = [
         [r"""FROM #tag""", [{"type": "tag", "value": "tag"}]],
         [r"""FROM "path/other/folder" """, [{"type": "path", "value": "path/other/folder"}]],
+        [r"""FROM "examples/library" """, [{"type": "path", "value": "examples/library"}]],
+        [r"""FROM "examples" """, [{"type": "path", "value": "examples"}]],
 
         # TODO: implement
         # [r"""FROM #tag1 AND #tag2""",
