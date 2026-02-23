@@ -18,11 +18,16 @@ dependencies = [
   "lark == 1.2.2",
   "python-frontmatter == 1.1.0",
   "mkdocs == 1.6.1",
+]
+
+[project.optional-dependencies]
+docs = [
   "markdown-callouts",
   "mdx-gh-links",
-  "mkdocs",
   "mkdocs-click",
   "pymdown-extensions",
+  "mkdocs-material",
+  "mkdocs-awesome-nav",
 ]
 
 [build-system]
@@ -39,3 +44,15 @@ addopts = [
 
 [tool.setuptools.dynamic]
 version = {attr = "mkdocs_dataview.__version__"}
+
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
