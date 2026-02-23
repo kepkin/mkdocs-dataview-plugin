@@ -3,6 +3,10 @@ from mkdocs_dataview.query.solvers import ExpressionSolverService
 from mkdocs_dataview.query.solvers import QueryService
 
 
+class RenderError(Exception):
+    pass
+
+
 class RendererWithContext:
     """Class for rendering dataview queries based on context"""
 
@@ -57,11 +61,7 @@ class RendererWithContext:
             out.write("|".join([str(i) for i in row_list]))
             out.write("|\n")
         except Exception as exc:
-            # raises already post processed where_query
-
-            # @TODO: remove? Enhance error?
-            # raise Exception(where_query, select_list, v) from exc # pylint: disable=broad-exception-raised
-            raise Exception(v) from exc
+            raise RenderError() from exc
 
     def render_table(self, qs, this_metadata, out, out_path):
         """renders markdown table"""
@@ -103,7 +103,7 @@ class RendererWithContext:
                     out.write(f"- {row_value}\n")
 
             except Exception as exc:
-                raise Exception(v) from exc
+                raise RenderError() from exc
 
     def render_query(self, query, this_metadata, out, out_path=''):
         """replaces context variable in where clause and then renders markdown table"""

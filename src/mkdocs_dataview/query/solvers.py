@@ -7,6 +7,19 @@ from lark.visitors import Interpreter
 from .grammar import LARK_GRAMMAR
 
 
+class QueryError(Exception):
+    pass
+
+
+class FuncitonCallError(QueryError, NameError):
+    pass
+
+
+class TransformationError(QueryError):
+    pass
+
+
+
 class QueryService():
     def __init__(self, query):
         self.query = query
@@ -308,7 +321,6 @@ def dataview_econtains(data, value) -> tuple[str, bool]:
     return "BOOLEAN", value in data
 
 
-# TODO: what if value is not a string or list?
 def dataview_length(value) -> tuple[str, int]:
     """length function"""
     if value is None:
@@ -322,7 +334,6 @@ def dataview_date(value) -> tuple[str, str]:
     return "STRING_CONSTANT", str(value)
 
 
-# TODO: check implementation
 def dataview_link(path, display=None) -> tuple[str, str]:
     """link function"""
     if display:
@@ -330,7 +341,6 @@ def dataview_link(path, display=None) -> tuple[str, str]:
     return "STRING_CONSTANT", f"[{path}]({path})"
 
 
-# TODO: check implementation
 def dataview_choice(condition, if_true, if_false) -> tuple[str, any]:
     """choice function"""
     if condition:
@@ -338,7 +348,6 @@ def dataview_choice(condition, if_true, if_false) -> tuple[str, any]:
     return "STRING_CONSTANT", if_false
 
 
-# TODO: check implementation
 def dataview_default(value, default_val) -> tuple[str, any]:
     """default function"""
     if value is None or value == "null":
@@ -346,6 +355,7 @@ def dataview_default(value, default_val) -> tuple[str, any]:
     return "STRING_CONSTANT", value
 
 
+# pylint: disable=too-few-public-methods
 class ExpressionSolverService():
     def __init__(self, expression):
         lark = Lark(LARK_GRAMMAR, start='expression')
@@ -393,7 +403,8 @@ class ExpressionSolver(Transformer):
 
     def where_clause(self, toks):
         if len(toks) != 1:
-            raise Exception("unexpected where tokens size" + len(toks))
+            raise TransformationError("unexpected where tokens size")
+
         return toks[0]
 
     def aliased_select_expression(self, toks):
@@ -490,7 +501,7 @@ class ExpressionSolver(Transformer):
         args = toks[1:]
 
         if func_token.value not in self.funcs:
-            raise Exception(f"Unknown function {func_token.value}")
+            raise FuncitonCallError("Unknown function", name = func_token.value)
 
         _, new_value = self.funcs[func_token.value](*args)
         # We return just the value now, as the transformer seems to expect values

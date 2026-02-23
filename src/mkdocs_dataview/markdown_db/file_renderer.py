@@ -2,17 +2,19 @@ import io
 import os
 import frontmatter
 
-from . import RendererWithContext, build_index, IndexBuilder
+from .md_renderer import RendererWithContext
+from .index import build_index, SimpleMemoryIndex
 from .. import utils
 
 
 __debug_log_file__ = None
 
 
-class FilePlugin(IndexBuilder):
-    def __init__(self, sources):
-        self.renderer = RendererWithContext(sources)
-        self.sources = sources
+class FilePlugin():
+    def __init__(self):
+        self.index = SimpleMemoryIndex()
+        self.sources = {}
+        self.renderer = RendererWithContext(self.sources)
         self.log_toggle = False
 
     def toggle_log(self, v: bool) -> None:
@@ -58,17 +60,9 @@ class FilePlugin(IndexBuilder):
     def _on_file(self, file_path: str, target_url: str):
         """common method to scan file to build index"""
 
-        if os.path.basename(file_path) == __debug_log_file__:
-            self.log_toggle = True
-
-        self._log("*"*80)
-        self._log("load_file", file_path)
-
         data = self.load_file(file_path)
 
-        self._log(data.metadata)
-        self._log("*"*80)
-        build_index(data, file_path, target_url, self)
+        build_index(data, file_path, target_url, self.index)
         self.log_toggle = False
 
     def collect_data(self, root_path: str):
